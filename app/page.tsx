@@ -157,6 +157,9 @@ export default function Home() {
         <p className="text-center text-xs text-[#c4b5a8] mt-3">
           伊万不能替代专业心理帮助 · 危机请拨 400-161-9995
         </p>
+        <p className="text-center text-xs text-[#c4b5a8] mt-1">
+          有任何想说的 · 加微信：18813061109
+        </p>
       </div>
     </div>
   );
