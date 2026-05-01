@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 const client = new OpenAI({
   apiKey: process.env.DEEPSEEK_API_KEY,
   baseURL: "https://api.deepseek.com",
@@ -66,6 +68,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 ];
 
 async function searchWeb(query: string): Promise<string> {
+  console.log("[search] query:", query, "key exists:", !!process.env.TAVILY_API_KEY);
   const res = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -163,7 +166,9 @@ export async function POST(req: NextRequest) {
         }
 
         controller.close();
-      } catch {
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        controller.enqueue(encoder.encode(`\n\n[搜索出错：${msg}]`));
         controller.close();
       }
     },
