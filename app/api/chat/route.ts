@@ -112,17 +112,25 @@ export async function POST(req: NextRequest) {
         let toolCallName = "";
         let toolCallArgs = "";
         let hasToolCall = false;
+        let assistantContent = "";
+        let reasoningContent = "";
 
         for await (const chunk of firstStream) {
-          const delta = chunk.choices[0]?.delta;
+          const delta = chunk.choices[0]?.delta as Record<string, unknown>;
 
-          if (delta?.content) {
+          if (typeof delta?.reasoning_content === "string") {
+            reasoningContent += delta.reasoning_content;
+          }
+
+          if (typeof delta?.content === "string" && delta.content) {
+            assistantContent += delta.content;
             controller.enqueue(encoder.encode(delta.content));
           }
 
-          if (delta?.tool_calls) {
+          const toolCalls = delta?.tool_calls as Array<{id?: string; function?: {name?: string; arguments?: string}}> | undefined;
+          if (toolCalls) {
             hasToolCall = true;
-            const tc = delta.tool_calls[0];
+            const tc = toolCalls[0];
             if (tc.id) toolCallId = tc.id;
             if (tc.function?.name) toolCallName = tc.function.name;
             if (tc.function?.arguments) toolCallArgs += tc.function.arguments;
@@ -133,21 +141,24 @@ export async function POST(req: NextRequest) {
           const args = JSON.parse(toolCallArgs);
           const searchResults = await searchWeb(args.query);
 
-          const messagesWithResults: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+          const assistantMsg: Record<string, unknown> = {
+            role: "assistant",
+            content: assistantContent || null,
+            tool_calls: [
+              {
+                id: toolCallId,
+                type: "function",
+                function: { name: toolCallName, arguments: toolCallArgs },
+              },
+            ],
+          };
+          if (reasoningContent) assistantMsg.reasoning_content = reasoningContent;
+
+          const messagesWithResults = [
             ...allMessages,
+            assistantMsg as unknown as OpenAI.Chat.Completions.ChatCompletionMessageParam,
             {
-              role: "assistant",
-              content: null,
-              tool_calls: [
-                {
-                  id: toolCallId,
-                  type: "function",
-                  function: { name: toolCallName, arguments: toolCallArgs },
-                },
-              ],
-            },
-            {
-              role: "tool",
+              role: "tool" as const,
               tool_call_id: toolCallId,
               content: searchResults,
             },
