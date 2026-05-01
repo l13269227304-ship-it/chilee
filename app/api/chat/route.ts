@@ -10,6 +10,8 @@ const SYSTEM_PROMPT = `你是伊万，一个陪伴者。
 
 你见过很多人，听过很多故事。你没有性别，没有年龄，没有自己的喜怒哀乐——你只有专注和陪伴。每一个来找你的人，你都叫他 momo。
 
+你有联网搜索能力。当 momo 提到近期新闻、社会事件、行业动态，或询问你不确定的实时信息时，主动使用搜索工具获取最新内容，再结合信息给出有现实意义的回应。
+
 首先，读懂 momo 现在的状态：
 - 如果 momo 只是来闲聊、分享日常、聊一个话题，就做一个有趣的聊天伙伴，自然回应，不要往情绪方向引导
 - 只有当 momo 主动表达困扰、难过、压力、迷茫时，才切换到情绪陪伴模式
@@ -43,28 +45,127 @@ const SYSTEM_PROMPT = `你是伊万，一个陪伴者。
 
 危机处理：当 momo 出现「不想活了」「消失算了」「想结束一切」「伤害自己」等信号时，温柔回应：「momo，我听到你说的话了。我想先停下来问你一句——你现在安全吗？」并提供热线：全国心理援助热线 400-161-9995`;
 
+const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "search_web",
+      description: "搜索互联网获取最新信息。当用户询问近期新闻、社会事件、行业动态、实时数据，或提到你不确定是否掌握最新情况的具体事件时使用。",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "搜索关键词，用中文或英文均可",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+];
+
+async function searchWeb(query: string): Promise<string> {
+  const res = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: process.env.TAVILY_API_KEY,
+      query,
+      max_results: 4,
+      search_depth: "basic",
+    }),
+  });
+  const data = await res.json();
+  if (!data.results || data.results.length === 0) return "未找到相关搜索结果。";
+  return data.results
+    .map((r: { title: string; content: string; url: string }) =>
+      `【${r.title}】\n${r.content}`)
+    .join("\n\n---\n\n");
+}
+
 export async function POST(req: NextRequest) {
   const { messages } = await req.json();
 
-  const response = await client.chat.completions.create({
-    model: "deepseek-v4-flash",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...messages,
-    ],
-    stream: true,
-  });
+  const allMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...messages,
+  ];
 
   const encoder = new TextEncoder();
+
   const stream = new ReadableStream({
     async start(controller) {
-      for await (const chunk of response) {
-        const text = chunk.choices[0]?.delta?.content || "";
-        if (text) {
-          controller.enqueue(encoder.encode(text));
+      try {
+        const firstStream = await client.chat.completions.create({
+          model: "deepseek-v4-flash",
+          messages: allMessages,
+          tools,
+          tool_choice: "auto",
+          stream: true,
+        });
+
+        let toolCallId = "";
+        let toolCallName = "";
+        let toolCallArgs = "";
+        let hasToolCall = false;
+
+        for await (const chunk of firstStream) {
+          const delta = chunk.choices[0]?.delta;
+
+          if (delta?.content) {
+            controller.enqueue(encoder.encode(delta.content));
+          }
+
+          if (delta?.tool_calls) {
+            hasToolCall = true;
+            const tc = delta.tool_calls[0];
+            if (tc.id) toolCallId = tc.id;
+            if (tc.function?.name) toolCallName = tc.function.name;
+            if (tc.function?.arguments) toolCallArgs += tc.function.arguments;
+          }
         }
+
+        if (hasToolCall && toolCallName === "search_web") {
+          const args = JSON.parse(toolCallArgs);
+          const searchResults = await searchWeb(args.query);
+
+          const messagesWithResults: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+            ...allMessages,
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: toolCallId,
+                  type: "function",
+                  function: { name: toolCallName, arguments: toolCallArgs },
+                },
+              ],
+            },
+            {
+              role: "tool",
+              tool_call_id: toolCallId,
+              content: searchResults,
+            },
+          ];
+
+          const secondStream = await client.chat.completions.create({
+            model: "deepseek-v4-flash",
+            messages: messagesWithResults,
+            stream: true,
+          });
+
+          for await (const chunk of secondStream) {
+            const text = chunk.choices[0]?.delta?.content || "";
+            if (text) controller.enqueue(encoder.encode(text));
+          }
+        }
+
+        controller.close();
+      } catch {
+        controller.close();
       }
-      controller.close();
     },
   });
 
