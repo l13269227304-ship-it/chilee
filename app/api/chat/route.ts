@@ -153,16 +153,23 @@ export async function POST(req: NextRequest) {
             },
           ];
 
+          console.log("[search] results length:", searchResults.length);
+
           const secondStream = await client.chat.completions.create({
             model: "deepseek-v4-flash",
             messages: messagesWithResults,
             stream: true,
           });
 
+          let secondContent = "";
           for await (const chunk of secondStream) {
             const text = chunk.choices[0]?.delta?.content || "";
-            if (text) controller.enqueue(encoder.encode(text));
+            if (text) {
+              secondContent += text;
+              controller.enqueue(encoder.encode(text));
+            }
           }
+          console.log("[second stream] length:", secondContent.length, "preview:", secondContent.slice(0, 80));
         }
 
         controller.close();
