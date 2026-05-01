@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
           const assistantMsg: Record<string, unknown> = {
             role: "assistant",
             content: assistantContent || null,
+            reasoning_content: reasoningContent,
             tool_calls: [
               {
                 id: toolCallId,
@@ -152,7 +153,6 @@ export async function POST(req: NextRequest) {
               },
             ],
           };
-          if (reasoningContent) assistantMsg.reasoning_content = reasoningContent;
 
           const messagesWithResults = [
             ...allMessages,
