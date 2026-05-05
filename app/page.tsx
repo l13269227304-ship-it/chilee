@@ -76,6 +76,35 @@ export default function Home() {
     ]);
   };
 
+  const exportChat = () => {
+    const blob = new Blob([JSON.stringify(messages, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `伊万对话_${new Date().toLocaleDateString("zh-CN").replace(/\//g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importChat = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (Array.isArray(imported)) {
+          setMessages(imported);
+          localStorage.setItem("ivan-messages", JSON.stringify(imported));
+        }
+      } catch {
+        // ignore malformed files
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   return (
     <div className="min-h-screen bg-[#fdf6ec] flex flex-col items-center">
       {/* 顶栏 */}
@@ -84,12 +113,25 @@ export default function Home() {
           <h1 className="text-lg font-medium text-[#5c4a3a]">伊万</h1>
           <p className="text-xs text-[#a89080]">你的情绪疏导员</p>
         </div>
-        <button
-          onClick={clearChat}
-          className="text-xs text-[#a89080] hover:text-[#5c4a3a] transition-colors"
-        >
-          新的对话
-        </button>
+        <div className="flex items-center gap-4">
+          <label className="text-xs text-[#a89080] hover:text-[#5c4a3a] transition-colors cursor-pointer">
+            导入对话
+            <input type="file" accept=".json" onChange={importChat} className="hidden" />
+          </label>
+          <button
+            onClick={exportChat}
+            disabled={messages.length <= 1}
+            className="text-xs text-[#a89080] hover:text-[#5c4a3a] transition-colors disabled:opacity-30"
+          >
+            导出对话
+          </button>
+          <button
+            onClick={clearChat}
+            className="text-xs text-[#a89080] hover:text-[#5c4a3a] transition-colors"
+          >
+            新的对话
+          </button>
+        </div>
       </div>
 
       {/* 消息区 */}
