@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import type { MealHistory, Blacklist } from '@/lib/types'
+import type { MealHistory, Blacklist, CustomRestaurant } from '@/lib/types'
 
 declare global { interface Window { AMap: any } }
 
@@ -42,6 +43,7 @@ type State = 'idle' | 'loading' | 'result'
 interface Restaurant { id: string; name: string; type: string; distance: string; location: { lng: number; lat: number } | null }
 
 export default function HomePage() {
+  const router = useRouter()
   const mapRef = useRef<any>(null)
   const mapElRef = useRef<HTMLDivElement>(null)
   const [state, setState] = useState<State>('idle')
@@ -53,6 +55,7 @@ export default function HomePage() {
   const [radius, setRadius] = useState('1000')
   const [history, setHistory] = useState<MealHistory[]>([])
   const [blacklist, setBlacklist] = useState<Blacklist[]>([])
+  const [customRestaurants, setCustomRestaurants] = useState<CustomRestaurant[]>([])
   const [histOpen, setHistOpen] = useState(false)
   const [toast, setToast] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
@@ -83,12 +86,14 @@ export default function HomePage() {
   }, [])
 
   async function loadCloudData(uid: string) {
-    const [{ data: hist }, { data: bl }] = await Promise.all([
+    const [{ data: hist }, { data: bl }, { data: custom }] = await Promise.all([
       supabase.from('meal_history').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(30),
       supabase.from('blacklist').select('*').eq('user_id', uid),
+      supabase.from('custom_restaurants').select('*').eq('user_id', uid),
     ])
-    if (hist) setHistory(hist)
-    if (bl)   setBlacklist(bl)
+    if (hist)   setHistory(hist)
+    if (bl)     setBlacklist(bl)
+    if (custom) setCustomRestaurants(custom)
   }
 
   // ── 地图初始化 ──
@@ -236,11 +241,18 @@ export default function HomePage() {
       sessionRejectedRef.current[cat] = (sessionRejectedRef.current[cat] || 0) + 1
     }
     const blIds = new Set(blacklist.map(b => b.restaurant_id))
-    let avail = restaurantsRef.current.filter(r => !blIds.has(r.id) && !sessionShownRef.current.includes(r.id))
+    const blNames = new Set(blacklist.map(b => b.restaurant_name))
+    // 合并地图餐厅 + 自定义餐厅
+    const customPool: Restaurant[] = customRestaurants
+      .filter(r => !blNames.has(r.name))
+      .map(r => ({ id: `custom_${r.id}`, name: r.name, type: r.category || '其他', distance: '附近', location: null }))
+    const mapPool = restaurantsRef.current.filter(r => !blIds.has(r.id))
+    const fullPool = [...mapPool, ...customPool]
+    let avail = fullPool.filter(r => !sessionShownRef.current.includes(r.id))
     if (avail.length === 0) {
       sessionShownRef.current = []
-      avail = restaurantsRef.current.filter(r => !blIds.has(r.id))
-      showToast('附近都推荐过了，重新开始')
+      avail = fullPool
+      showToast('都推荐过了，重新开始')
     }
     if (avail.length === 0) { showToast('附近没有找到餐厅，请搜索其他地址'); return }
 
@@ -257,7 +269,10 @@ export default function HomePage() {
     const rejLine = Object.entries(sessionRejectedRef.current).length
       ? Object.entries(sessionRejectedRef.current).map(([c, n]) => `${c}（已跳过${n}次）`).join('、')
       : '（无）'
-    const restLines = avail.map(r => `- ${r.name}【${categorize(r.name)}】${r.distance}米`).join('\n')
+    const restLines = avail.map(r => {
+      const isCustom = r.id.startsWith('custom_')
+      return `- ${r.name}【${categorize(r.name)}】${isCustom ? '用户收藏' : `${r.distance}米`}`
+    }).join('\n')
     const histLines = history.length
       ? history.slice(0, 7).map(h => `- ${h.date} ${h.period}：${h.restaurant_name}【${categorize(h.restaurant_name)}】`).join('\n')
       : '（暂无，用户可能是首次使用，请勿推断或编造用户最近吃过什么，直接基于天气和时段推荐即可）'
@@ -371,7 +386,10 @@ ${restLines}
           </span>
           <em style={{ fontStyle: 'italic', color: 'var(--accent)', fontFamily: "'STKaiti','KaiTi',Georgia,serif" }}>AI帮选</em>
         </div>
-        <button onClick={handleLogout} style={{ position: 'absolute', right: 16, fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer' }}>退出</button>
+        <div style={{ position: 'absolute', right: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button onClick={() => router.push('/restaurants')} style={{ fontSize: 11, color: 'var(--blue)', background: 'none', border: '0.5px solid rgba(45,91,227,.3)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 500 }}>我的餐厅</button>
+          <button onClick={handleLogout} style={{ fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer' }}>退出</button>
+        </div>
       </div>
 
       {/* Map */}
