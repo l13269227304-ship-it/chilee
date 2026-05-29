@@ -9,7 +9,7 @@ declare global { interface Window { AMap: any } }
 const AMAP_KEY = 'aebe845070883bd4481e5e2edf4c3da5'
 const AI_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions'
 const AI_KEY = 'sk-bba06a094d744521b6a1bad4fbb29786'
-const AI_MODEL = 'deepseek-chat'
+const AI_MODEL = 'deepseek-v4-flash'
 
 const CAT_RULES = [
   { cat: '面食',     keys: ['面','拉面','刀削','米线','螺蛳粉','河粉','粉'] },
