@@ -17,6 +17,29 @@ export interface Blacklist {
   created_at: string
 }
 
+export interface Group {
+  id: string
+  name: string
+  invite_code: string
+  created_by: string
+  created_at: string
+}
+
+export interface GroupMember {
+  id: string
+  group_id: string
+  user_id: string
+  nickname: string | null
+  joined_at: string
+}
+
+export interface UserPrefs {
+  user_id: string
+  avoid_cats: string[] | null
+  dietary_notes: string | null
+  updated_at: string
+}
+
 export interface CustomRestaurant {
   id: string
   user_id: string

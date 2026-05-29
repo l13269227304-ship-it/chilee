@@ -150,6 +150,8 @@ export default function HomePage() {
             return { id: p.id, name: p.name, type: p.type || '', distance: p.distance, location: pLng && pLat ? { lng: pLng, lat: pLat } : null }
           })
         addMapMarkers(restaurantsRef.current, [lng, lat])
+      // 存给饭搭子群组页使用
+      try { sessionStorage.setItem('nearby_restaurants', JSON.stringify(restaurantsRef.current.slice(0, 50))) } catch {}
       }
     } catch { /* silent */ }
   }
@@ -388,6 +390,7 @@ ${restLines}
         </div>
         <div style={{ position: 'absolute', right: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
           <button onClick={() => router.push('/restaurants')} style={{ fontSize: 11, color: 'var(--blue)', background: 'none', border: '0.5px solid rgba(45,91,227,.3)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 500 }}>我的餐厅</button>
+          <button onClick={() => router.push('/group')} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: '0.5px solid rgba(224,92,53,.3)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 500 }}>饭搭子</button>
           <button onClick={handleLogout} style={{ fontSize: 11, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer' }}>退出</button>
         </div>
       </div>
